@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   SendHorizonal, PackageCheck, Truck, FlaskConical,
-  Scale, Calendar, Hash, FileText, ArrowLeft, User, Layers, MapPin,
+  Scale, Calendar, Hash, FileText, ArrowLeft, User, Layers, MapPin, Printer, X,
 } from "lucide-react";
 
 const MOCK_DISPATCHES = [
@@ -49,6 +49,104 @@ function StatusBadge({ status }) {
       <span style={{ width: 5, height: 5, borderRadius: 99, background: "currentColor" }} />
       {status}
     </span>
+  );
+}
+
+/* ── Dispatch Summary Modal ── */
+function DispatchSummaryModal({ data, onClose }) {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = data.date
+    ? new Date(data.date).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : now.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  // Convert weight to grams
+  const weightNum = parseFloat(data.weight) || 0;
+  const weightGm = data.unit === "kg" ? weightNum * 1000 : weightNum;
+  const purityNum = parseFloat(data.purity) || 0;
+  const fineGold = purityNum > 0 ? ((weightGm * purityNum) / 100).toFixed(2) : "—";
+  const grossWeightDisplay = weightGm.toFixed(2);
+
+  const handlePrint = () => window.print();
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} />
+
+      {/* Modal wrapper */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 61, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 640, display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {/* Action bar (hidden on print) */}
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Dispatch Summary generated</span>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handlePrint} style={{ display: "flex", alignItems: "center", gap: 7, height: 38, padding: "0 18px", borderRadius: 9, background: "linear-gradient(135deg, var(--gold) 0%, #a67c1a 100%)", border: "none", color: "#1a1407", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                <Printer size={15} /> Print
+              </button>
+              <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 6, height: 38, padding: "0 16px", borderRadius: 9, background: "var(--panel)", border: "1px solid var(--line)", color: "var(--muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                <X size={14} /> Close
+              </button>
+            </div>
+          </div>
+
+          {/* Printable document */}
+          <div id="dispatch-print-area" style={{ background: "#fff", color: "#000", borderRadius: 10, padding: "40px 48px", fontFamily: "Arial, sans-serif", fontSize: 13, lineHeight: 1.6 }}>
+            {/* Header */}
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "0.03em" }}>VIJAY ANAND GOLD LLP</div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>
+                Metal Dispatch to {data.destination || "—"}
+              </div>
+            </div>
+
+            {/* Date / Time */}
+            <div style={{ marginBottom: 20, fontSize: 13 }}>
+              <strong>Dispatch Date:</strong> {dateStr}&nbsp;&nbsp;&nbsp;&nbsp;
+              <strong>Time:</strong> {timeStr}
+            </div>
+
+            {/* Table */}
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32, fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {["S. No.", "Gross Weight (gm)", "No. of Bars", "Purity (%)", "Fine Gold (gm)"].map(h => (
+                    <th key={h} style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center", fontWeight: 700, background: "#f9f9f9" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center" }}>1</td>
+                  <td style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center" }}>{grossWeightDisplay}</td>
+                  <td style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center" }}>{data.noOfBars || "—"}</td>
+                  <td style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center" }}>{data.purity || "—"}</td>
+                  <td style={{ border: "1px solid #000", padding: "7px 12px", textAlign: "center" }}>{fineGold}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Signature fields */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 32 }}>
+              <div><strong>Prepared By:</strong> {data.receivedBy || "—"}</div>
+              <div><strong>Checked By:</strong> {data.receivedBy || "—"}</div>
+              <div><strong>Authorized Signatory:</strong> __________________________</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Print-only CSS */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #dispatch-print-area, #dispatch-print-area * { visibility: visible !important; }
+          #dispatch-print-area { position: fixed !important; inset: 0 !important; border-radius: 0 !important; padding: 40px 48px !important; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+    </>
   );
 }
 
@@ -155,7 +253,7 @@ function LandingCards({ onSelect }) {
 /* ── Add Dispatch form view ── */
 function AddDispatchView({ onBack, onAdd }) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const [submitted, setSubmitted] = useState(false);
+  const [summaryData, setSummaryData] = useState(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = (e) => {
@@ -169,12 +267,12 @@ function AddDispatchView({ onBack, onAdd }) {
       destination: form.destination,
       status: "In Transit",
     });
+    setSummaryData({ ...form });
     setForm(EMPTY_FORM);
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
   };
 
   return (
+    <>
     <div style={{ maxWidth: 600 }}>
       <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, fontWeight: 600, marginBottom: 24, padding: 0 }}>
         <ArrowLeft size={15} /> Back
@@ -203,7 +301,7 @@ function AddDispatchView({ onBack, onAdd }) {
           </Field>
         </div>
 
-        <Field label="Batch / Lot No." icon={Hash}>
+        <Field label="Dispatch ID" icon={Hash}>
           <input type="text" placeholder="e.g. AU-2026-090" value={form.batch} onChange={set("batch")} style={inputStyle} required />
         </Field>
 
@@ -261,17 +359,18 @@ function AddDispatchView({ onBack, onAdd }) {
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
-          <SendHorizonal size={15} />
-          {submitted ? "Dispatch Recorded!" : "Record Dispatch"}
+          <SendHorizonal size={15} /> Record Dispatch
         </button>
-
-        {submitted && (
-          <div style={{ textAlign: "center", fontSize: 12.5, color: "#34d399" }}>
-            Entry added to dispatch history.
-          </div>
-        )}
       </div>
     </div>
+
+    {summaryData && (
+      <DispatchSummaryModal
+        data={summaryData}
+        onClose={() => setSummaryData(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -303,7 +402,7 @@ function HistoryView({ dispatches, onBack }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--panel-2)" }}>
-                {["Dispatch ID", "Date", "Metal", "Batch", "Weight", "Purity", "Destination", "Status"].map((h) => (
+                {["Dispatch ID", "Date", "Metal", "Weight", "Purity", "Destination", "Status"].map((h) => (
                   <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "var(--muted)", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" }}>
                     {h.toUpperCase()}
                   </th>
@@ -318,10 +417,9 @@ function HistoryView({ dispatches, onBack }) {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-2)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <td style={{ padding: "13px 16px", fontWeight: 700, color: "var(--gold-soft)", whiteSpace: "nowrap" }}>{d.id}</td>
+                  <td style={{ padding: "13px 16px", fontWeight: 700, color: "var(--gold-soft)", whiteSpace: "nowrap" }}>{d.batch}</td>
                   <td style={{ padding: "13px 16px", color: "var(--muted)", whiteSpace: "nowrap" }}>{d.date}</td>
                   <td style={{ padding: "13px 16px", fontWeight: 600, color: d.metal === "Gold" ? "var(--gold-soft)" : "#c0c0c0", whiteSpace: "nowrap" }}>{d.metal}</td>
-                  <td style={{ padding: "13px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>{d.batch}</td>
                   <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>{d.weight}</td>
                   <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>{d.purity}</td>
                   <td style={{ padding: "13px 16px", color: "var(--muted)", maxWidth: 180 }}>{d.destination || "—"}</td>
@@ -342,7 +440,7 @@ export default function MetalDispatch() {
   const [dispatches, setDispatches] = useState(MOCK_DISPATCHES);
 
   const addDispatch = (entry) => {
-    setDispatches((prev) => [{ id: `D-${1041 + prev.length - MOCK_DISPATCHES.length + 1}`, ...entry }, ...prev]);
+    setDispatches((prev) => [{ id: entry.batch || String(Date.now()), ...entry }, ...prev]);
   };
 
   return (
