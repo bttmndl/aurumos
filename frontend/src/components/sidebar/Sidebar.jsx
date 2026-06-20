@@ -71,7 +71,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
           className="flex items-center gap-3 px-4 w-full"
           style={{
             height: 68, borderBottom: "1px solid var(--line)",
-            background: "none", border: "none", borderBottom: "1px solid var(--line)",
+            background: "none", border: "none",
             cursor: "pointer", textAlign: "left",
           }}
         >

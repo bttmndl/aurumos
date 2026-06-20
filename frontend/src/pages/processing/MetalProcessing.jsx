@@ -31,10 +31,10 @@ function emptyLot(id, lotNo) {
     powder:     { weight: "" },
     fine:       { fineWeight: "", fineSampleWeight: "" },
     fireAssay:  { purity: "" },
-    silverCalc: { targetPurity: "" },
+    silverCalc: { batches: [{ label: "A", weight: "", targetPurity: "" }] },
     fineProduct:{ weight: "" },
     undissolved:{ weight: "", xrfPurity: "" },
-    goldInSilver:{ goldWeight: "", fineGold: "" },
+    goldInSilver:{ goldWeight: "", purity: "" },
   };
 }
 
@@ -51,7 +51,7 @@ const SAMPLE_LOTS = [
     l.fine       = { fineWeight: "1156.711", fineSampleWeight: "1.382" };
     l.fireAssay  = { purity: "99.929" };
     l.undissolved   = { weight: "2.445",  xrfPurity: "92.790" };
-    l.goldInSilver  = { goldWeight: "12.880", fineGold: "3.030" };
+    l.goldInSilver  = { goldWeight: "12.880", purity: "23.525" };
     return l;
   })(),
   (() => {
@@ -69,7 +69,7 @@ const SAMPLE_LOTS = [
     l.fine       = { fineWeight: "1250.424", fineSampleWeight: "3.062" };
     l.fireAssay  = { purity: "99.987" };
     l.undissolved   = { weight: "16.366", xrfPurity: "83.920" };
-    l.goldInSilver  = { goldWeight: "37.420", fineGold: "2.116" };
+    l.goldInSilver  = { goldWeight: "37.420", purity: "5.654" };
     return l;
   })(),
   (() => {
@@ -87,7 +87,7 @@ const SAMPLE_LOTS = [
     l.fine       = { fineWeight: "1272.815", fineSampleWeight: "2.038" };
     l.fireAssay  = { purity: "99.99" };
     l.undissolved   = { weight: "46.997", xrfPurity: "88.910" };
-    l.goldInSilver  = { goldWeight: "39.641", fineGold: "" };
+    l.goldInSilver  = { goldWeight: "39.641", purity: "" };
     return l;
   })(),
   (() => {
@@ -102,7 +102,7 @@ const SAMPLE_LOTS = [
     l.fine       = { fineWeight: "2614.879", fineSampleWeight: "2.217" };
     l.fireAssay  = { purity: "99.99" };
     l.undissolved   = { weight: "315.910", xrfPurity: "81.260" };
-    l.goldInSilver  = { goldWeight: "181.820", fineGold: "" };
+    l.goldInSilver  = { goldWeight: "181.820", purity: "" };
     return l;
   })(),
   (() => {
@@ -112,12 +112,12 @@ const SAMPLE_LOTS = [
     l.initial    = { weight: "2879.710", unit: "gm" };
     l.sublots    = [{ label: "A", weight: "2879.710" }];
     l.afterMelt  = [{ label: "A", weight: "2879.710", dipSample: "2.122", fireAssayPurity: "85.470" }];
-    l.popcorn    = { weight: "2879.710" };
-    l.powder     = { weight: "2455.270" };
-    l.fine       = { fineWeight: "2455.270", fineSampleWeight: "1.840" };
+    l.popcorn    = { weight: "2539.340" };
+    l.powder     = { weight: "2538.670" };
+    l.fine       = { fineWeight: "2457.110", fineSampleWeight: "1.840" };
     l.fireAssay  = { purity: "99.97" };
     l.undissolved   = { weight: "2.159", xrfPurity: "81.1" };
-    l.goldInSilver  = { goldWeight: "110.170", fineGold: "" };
+    l.goldInSilver  = { goldWeight: "110.170", purity: "0.305" };
     return l;
   })(),
 ];
@@ -138,7 +138,7 @@ function stagesDone(lot) {
     lot.powder.weight,
     lot.fine.fineWeight,
     lot.fireAssay.purity,
-    lot.silverCalc.targetPurity,
+    lot.silverCalc.batches.some(b => b.targetPurity),
     lot.fineProduct.weight,
     lot.undissolved.weight,
     lot.goldInSilver.goldWeight,
@@ -270,31 +270,42 @@ function LotReport({ lot, onClose }) {
   const fineSampleWt     = parseFloat(lot.fine.fineSampleWeight) || 0;
   const effectiveFineWt  = Math.max(fineWt - fineSampleWt, 0);
   const purity           = parseFloat(lot.fireAssay.purity) || 0;
-  const targetPurity     = parseFloat(lot.silverCalc.targetPurity) || 0;
-  const fineGoldCalc     = effectiveFineWt > 0 && purity > 0 ? effectiveFineWt * purity / 100 : 0;
-  const silverMixWt      = effectiveFineWt > 0 && purity > 0 && targetPurity > 0
-    ? effectiveFineWt * (purity - targetPurity) / 100 : 0;
+  const fineGoldCalc     = fineWt > 0 && purity > 0 ? fineWt * purity / 100 : 0;
+  // per-batch silver mix: each batch has its own weight + target purity
+  const silverBatches    = lot.silverCalc.batches.map(b => ({
+    label:       b.label,
+    weight:      parseFloat(b.weight) || 0,
+    targetPurity:parseFloat(b.targetPurity) || 0,
+    silverMix:   (parseFloat(b.weight) || 0) > 0 && purity > 0 && (parseFloat(b.targetPurity) || 0) > 0
+                   ? (parseFloat(b.weight) || 0) * (purity - (parseFloat(b.targetPurity) || 0)) / 100
+                   : 0,
+  }));
+  const silverMixWt      = silverBatches.reduce((s, b) => s + b.silverMix, 0);
   // Fine product = Σ(afterMelt weight × fireAssayPurity per sub-lot)
   const fineProductCalc  = lot.afterMelt.some(am => am.weight && am.fireAssayPurity)
     ? lot.afterMelt.reduce((s, am) => s + (parseFloat(am.weight) || 0) * (parseFloat(am.fireAssayPurity) || 0) / 100, 0)
     : null;
   // Use manually entered weight if present, else use calculated
   const fineProductWt    = parseFloat(lot.fineProduct.weight) || (fineProductCalc ?? 0);
-  const undissolvedWt    = parseFloat(lot.undissolved.weight) || 0;
-  const undissolvedPurity = parseFloat(lot.undissolved.xrfPurity) || 0;
-  const goldInSilverWt   = parseFloat(lot.goldInSilver.goldWeight) || 0;
-  const fineGoldInSilver = parseFloat(lot.goldInSilver.fineGold) || 0;
+  const undissolvedWt      = parseFloat(lot.undissolved.weight) || 0;
+  const undissolvedPurity  = parseFloat(lot.undissolved.xrfPurity) || 0;
+  const goldInSilverWt     = parseFloat(lot.goldInSilver.goldWeight) || 0;
+  const goldInSilverPurity = parseFloat(lot.goldInSilver.purity) || 0;
+  const fineGoldInSilver   = goldInSilverWt * goldInSilverPurity / 100;
 
   const totalMeltLoss  = sublotTotal > 0 ? sublotTotal - afterMeltTotal - dipSampleTotal : 0;
   const recoveryLoss   = afterMeltTotal > 0 && recoveryWt > 0 ? afterMeltTotal - recoveryWt : 0;
   const recoveryPct    = initialWtGm > 0 && recoveryWt > 0 ? recoveryWt / initialWtGm * 100 : 0;
   // Fine gold in each output stream
-  const fineGoldReceived     = fineGoldCalc;                                   // Fine Analysis × Fine Purity
+  const fineGoldReceived      = fineGoldCalc;                                  // Fine Analysis × Fine Purity
   const fineGoldInUndissolved = undissolvedWt * undissolvedPurity / 100;       // Undissolved × XRF Purity
-  // goldInSilver.fineGold is the pre-calculated fine gold in the silver / recovery
-  const totalFineOut   = fineGoldReceived + fineGoldInSilver + fineGoldInUndissolved;
-  // Loss = Fine Product (After Melt × Fire Assay Purity) − (Fine Received + Fine Gold in Silver + Fine Gold in Undissolved)
-  const processingLoss = fineProductCalc !== null && totalFineOut > 0 ? fineProductCalc - totalFineOut : null;
+  const dipSampleFineGoldRpt  = lot.afterMelt.reduce((s, am) =>
+    s + (parseFloat(am.dipSample) || 0) * (parseFloat(am.fireAssayPurity) || 0) / 100, 0);
+  const totalFineReceived     = fineGoldReceived + dipSampleFineGoldRpt + fineGoldInUndissolved + fineGoldInSilver;
+  // Loss = Calc. Fine Gold − Total Fine Received
+  const processingLoss = fineProductCalc !== null
+    ? fineProductCalc - totalFineReceived
+    : null;
   const totalMetalOut  = fineProductWt + undissolvedWt + goldInSilverWt;
   const overallLoss    = initialWtGm > 0 && totalMetalOut > 0 ? initialWtGm - totalMetalOut : null;
   const refiningEff    = fineGoldCalc > 0 && fineProductWt > 0 ? fineProductWt / fineGoldCalc * 100 : 0;
@@ -548,7 +559,7 @@ td{padding:7px 9px;border:1px solid #e0e0e0;text-align:center;vertical-align:mid
                       <td style={TD()}>{r}</td>
                       <td style={TD({ textAlign: "left", paddingLeft: 14, fontWeight: 700 })}>Fire Assay (Fine Gold)</td>
                       <td style={TD()}>—</td>
-                      <td style={TD({ fontWeight: 700 })}>{effectiveFineWt > 0 ? n(effectiveFineWt) : "—"}</td>
+                      <td style={TD({ fontWeight: 700 })}>{fineWt > 0 ? n(fineWt) : "—"}</td>
                       <td style={TD()}>—</td>
                       <td style={TD()}>—</td>
                       <td style={TD({ fontWeight: 800, background: "#fdf8ee", color: "#a67c1a" })}>{fineGoldCalc > 0 ? n(fineGoldCalc) : "—"}</td>
@@ -558,21 +569,28 @@ td{padding:7px 9px;border:1px solid #e0e0e0;text-align:center;vertical-align:mid
                     </tr>
                   ); })()}
 
-                  {/* Silver Mix */}
-                  {silverMixWt > 0 && (() => { const r = ++sr; return (
-                    <tr style={{ background: "#f0f9ff" }}>
-                      <td style={TD()}>{r}</td>
-                      <td style={TD({ textAlign: "left", paddingLeft: 14, fontWeight: 700 })}>Silver Mix Calculation</td>
-                      <td style={TD()}>—</td>
-                      <td style={TD({ fontWeight: 700 })}>{effectiveFineWt > 0 ? n(effectiveFineWt) : "—"}</td>
-                      <td style={TD()}>—</td>
-                      <td style={TD()}>—</td>
-                      <td style={TD({ fontWeight: 800, background: "#eff6ff", color: "#1d4ed8" })}>{n(silverMixWt)}</td>
-                      <td style={TD({ color: "#1d4ed8" })}>{targetPurity.toFixed(2)}%</td>
-                      <td style={TD()}>—</td>
-                      <td style={TD({ borderRight: "none", fontSize: 11, color: "#888" })}>Target purity</td>
-                    </tr>
-                  ); })()}
+                  {/* Silver Mix (one row per batch) */}
+                  {silverMixWt > 0 && silverBatches.filter(b => b.silverMix > 0).map((b, i) => {
+                    const isFirst = i === 0;
+                    if (isFirst) sr++;
+                    const r = isFirst ? sr : "";
+                    return (
+                      <tr key={b.label} style={{ background: "#f0f9ff" }}>
+                        <td style={TD()}>{r}</td>
+                        <td style={TD({ textAlign: "left", paddingLeft: isFirst ? 14 : 28, fontWeight: isFirst ? 700 : 400, color: isFirst ? "#1a1407" : "#666" })}>
+                          {isFirst ? "Silver Mix Calculation" : ""}
+                        </td>
+                        <td style={TD({ fontWeight: 700, color: "#1d4ed8" })}>{b.label}</td>
+                        <td style={TD({ fontWeight: 700 })}>{b.weight > 0 ? n(b.weight) : "—"}</td>
+                        <td style={TD()}>—</td>
+                        <td style={TD()}>—</td>
+                        <td style={TD({ fontWeight: 800, background: "#eff6ff", color: "#1d4ed8" })}>{n(b.silverMix)}</td>
+                        <td style={TD({ color: "#1d4ed8" })}>{b.targetPurity > 0 ? `${b.targetPurity.toFixed(2)}%` : "—"}</td>
+                        <td style={TD()}>—</td>
+                        <td style={TD({ borderRight: "none", fontSize: 11, color: "#888" })}>Target purity</td>
+                      </tr>
+                    );
+                  })}
 
                   {/* Fine Product */}
                   {(fineProductCalc !== null || fineProductWt > 0) && (() => { const r = ++sr; return (
@@ -596,7 +614,7 @@ td{padding:7px 9px;border:1px solid #e0e0e0;text-align:center;vertical-align:mid
                             Processing {processingLoss > 0 ? "Loss" : "Gain"}
                           </td>
                           <td style={TD()}>—</td>
-                          <td style={TD({ fontSize: 10, color: "#888" })}>Fine Product − (Fine Received + Silver + Undissolved)</td>
+                          <td style={TD({ fontSize: 10, color: "#888" })}>Fine Product − Fine Out − Dip Sample − Undissolved − Gold in Silver</td>
                           <td style={TD()}>—</td>
                           <td style={TD({ fontWeight: 800, color: processingLoss > 0 ? "#dc2626" : "#15803d" })}>
                             {processingLoss > 0 ? `−${processingLoss.toFixed(3)}` : `+${Math.abs(processingLoss).toFixed(3)}`}
@@ -636,9 +654,9 @@ td{padding:7px 9px;border:1px solid #e0e0e0;text-align:center;vertical-align:mid
                       <td style={TD()}>—</td>
                       <td style={TD()}>—</td>
                       <td style={TD({ fontWeight: 700, background: "#f0fdf4", color: "#15803d" })}>{fineGoldInSilver > 0 ? n(fineGoldInSilver) : "—"}</td>
-                      <td style={TD()}>—</td>
+                      <td style={TD({ color: "#888" })}>{goldInSilverPurity > 0 ? `${goldInSilverPurity.toFixed(3)}%` : "—"}</td>
                       <td style={TD({ fontWeight: 700, color: "#a67c1a" })}>{fineGoldInSilver > 0 ? n(fineGoldInSilver) : "—"}</td>
-                      <td style={TD({ borderRight: "none", fontSize: 11, color: "#888" })}>Fine Gold in Silver</td>
+                      <td style={TD({ borderRight: "none", fontSize: 11, color: "#888" })}>XRF Purity</td>
                     </tr>
                   ); })()}
 
@@ -653,8 +671,8 @@ td{padding:7px 9px;border:1px solid #e0e0e0;text-align:center;vertical-align:mid
                 { label: "Total Input",         value: initialWtGm > 0   ? `${n(initialWtGm)} gm`       : "—", bg: "#fdf8ee", bd: "#e6c873",  cl: "#1a1407"  },
                 { label: "Recovery Weight",      value: recoveryWt > 0    ? `${n(recoveryWt)} gm`        : "—", bg: "#f0fdf4", bd: "#86efac",  cl: "#15803d"  },
                 { label: "Recovery %",           value: recoveryPct > 0   ? `${recoveryPct.toFixed(2)}%` : "—", bg: "#fffbeb", bd: "#fde68a",  cl: "#b45309"  },
-                { label: "Calc. Fine Gold",      value: fineGoldCalc > 0  ? `${n(fineGoldCalc)} gm`      : "—", bg: "#fdf8ee", bd: "#e6c873",  cl: "#a67c1a"  },
-                { label: "Fine Product",         value: fineProductCalc !== null ? `${n(fineProductCalc)} gm` : fineProductWt > 0 ? `${n(fineProductWt)} gm` : "—", bg: "#f0fdf4", bd: "#86efac", cl: "#15803d" },
+                { label: "Calc. Fine Gold",      value: fineProductCalc !== null ? `${n(fineProductCalc)} gm` : "—", bg: "#fdf8ee", bd: "#e6c873", cl: "#a67c1a" },
+                { label: "Fine Received",        value: totalFineReceived > 0 ? `${n(totalFineReceived)} gm` : "—", bg: "#f0fdf4", bd: "#86efac", cl: "#15803d" },
                 {
                   label: "Processing Loss / Gain",
                   value: processingLoss !== null
@@ -787,6 +805,29 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
     setEditingSubLots(prev => prev.slice(0, -1));
   };
 
+  const setSilverBatch = (idx, field, val) => {
+    setData(prev => {
+      const next = structuredClone(prev);
+      next.silverCalc.batches[idx][field] = val;
+      return next;
+    });
+  };
+  const addSilverBatch = () => {
+    setData(prev => {
+      const next = structuredClone(prev);
+      const label = String.fromCharCode(65 + next.silverCalc.batches.length);
+      next.silverCalc.batches.push({ label, weight: "", targetPurity: "" });
+      return next;
+    });
+  };
+  const removeSilverBatch = () => {
+    setData(prev => {
+      const next = structuredClone(prev);
+      if (next.silverCalc.batches.length > 1) next.silverCalc.batches.pop();
+      return next;
+    });
+  };
+
   const save = () => {
     const initialWeight = parseFloat(data.initial.weight) || 0;
     const initialWeightGm = data.initial.unit === "kg" ? initialWeight * 1000 : initialWeight;
@@ -803,22 +844,7 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
   const done = stagesDone(data);
   const pct = Math.round((done / STAGES.length) * 100);
 
-  // determine if a stage has data
-  const hasData = {
-    initial:     !!data.initial.weight,
-    sublots:     data.sublots.some(s => s.weight),
-    afterMelt:   data.afterMelt.some(s => s.weight) || !!data.recoveryWeight,
-    popcorn:     !!data.popcorn.weight,
-    powder:      !!data.powder.weight,
-    fine:        !!(data.fine.fineWeight || data.fine.fineSampleWeight),
-    fireAssay:   !!data.fireAssay.purity,
-    silverCalc:  !!data.silverCalc.targetPurity,
-    fineProduct: !!(data.fineProduct.weight || fineProductCalc),
-    undissolved: !!(data.undissolved.weight || data.undissolved.xrfPurity),
-    goldInSilver:!!(data.goldInSilver.goldWeight || data.goldInSilver.fineGold),
-  };
-
-  // auto-calculations
+  // auto-calculations (must come before hasData so fineProductCalc is defined)
   const subTotal = data.sublots.reduce((s, l) => s + (parseFloat(l.weight) || 0), 0);
   const initialWt = parseFloat(data.initial.weight) || 0;
   const initialWtGm = data.initial.unit === "kg" ? initialWt * 1000 : initialWt;
@@ -837,18 +863,19 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
     return fw > 0 ? fw - sw : 0;
   })();
 
-  const silverMixCalc = (() => {
-    const fw = effectiveFineWeight;
-    const fa = parseFloat(data.fireAssay.purity);
-    const tp = parseFloat(data.silverCalc.targetPurity);
-    if (!fw || !fa || !tp) return null;
-    return ((fw * (fa / 100)) - (fw * (tp / 100))).toFixed(3);
-  })();
+  const silverBatchCalcs = data.silverCalc.batches.map(b => {
+    const bw = parseFloat(b.weight) || 0;
+    const fa = parseFloat(data.fireAssay.purity) || 0;
+    const tp = parseFloat(b.targetPurity) || 0;
+    return bw > 0 && fa > 0 && tp > 0 ? bw * (fa - tp) / 100 : null;
+  });
+  const silverMixTotal = silverBatchCalcs.reduce((s, v) => s + (v ?? 0), 0);
+  const silverBatchWeightTotal = data.silverCalc.batches.reduce((s, b) => s + (parseFloat(b.weight) || 0), 0);
 
   // Fine product = sum(afterMelt weight × fire assay purity) per sub-lot
   const fineProductCalc = (() => {
-    const hasData = data.afterMelt.some(am => am.weight && am.fireAssayPurity);
-    if (!hasData) return null;
+    const hasAfterMeltData = data.afterMelt.some(am => am.weight && am.fireAssayPurity);
+    if (!hasAfterMeltData) return null;
     return data.afterMelt.reduce((s, am) => {
       const w = parseFloat(am.weight) || 0;
       const p = parseFloat(am.fireAssayPurity) || 0;
@@ -857,15 +884,33 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
   })();
 
   // Fine gold in each output stream
-  const fineGoldActual        = effectiveFineWeight > 0 && parseFloat(data.fireAssay.purity) > 0
-    ? effectiveFineWeight * parseFloat(data.fireAssay.purity) / 100 : 0;
-  const fineGoldSilver        = parseFloat(data.goldInSilver.fineGold) || 0;
+  const fineWtTotal           = parseFloat(data.fine.fineWeight) || 0;
+  const fineGoldActual        = fineWtTotal > 0 && parseFloat(data.fireAssay.purity) > 0
+    ? fineWtTotal * parseFloat(data.fireAssay.purity) / 100 : 0;
+  const goldInSilverPurityD   = parseFloat(data.goldInSilver.purity) || 0;
+  const fineGoldSilver        = (parseFloat(data.goldInSilver.goldWeight) || 0) * goldInSilverPurityD / 100;
   const fineGoldUndissolved   = (parseFloat(data.undissolved.weight) || 0) * (parseFloat(data.undissolved.xrfPurity) || 0) / 100;
-  const totalFineOut          = fineGoldActual + fineGoldSilver + fineGoldUndissolved;
-  // Loss = Fine Product − (Fine Received + Fine Gold in Silver + Fine Gold in Undissolved)
-  const processingLoss = fineProductCalc !== null && totalFineOut > 0
-    ? fineProductCalc - totalFineOut
+  const dipSampleFineGold     = data.afterMelt.reduce((s, am) =>
+    s + (parseFloat(am.dipSample) || 0) * (parseFloat(am.fireAssayPurity) || 0) / 100, 0);
+  // Loss = Fine Product − Fine Product Out − Dip Sample Fine Gold − Undissolved − Gold in Silver
+  const processingLoss = fineProductCalc !== null
+    ? fineProductCalc - fineGoldActual - dipSampleFineGold - fineGoldUndissolved - fineGoldSilver
     : null;
+
+  // determine if a stage has data
+  const hasData = {
+    initial:     !!data.initial.weight,
+    sublots:     data.sublots.some(s => s.weight),
+    afterMelt:   data.afterMelt.some(s => s.weight) || !!data.recoveryWeight,
+    popcorn:     !!data.popcorn.weight,
+    powder:      !!data.powder.weight,
+    fine:        !!(data.fine.fineWeight || data.fine.fineSampleWeight),
+    fireAssay:   !!data.fireAssay.purity,
+    silverCalc:  data.silverCalc.batches.some(b => b.targetPurity),
+    fineProduct: !!(data.fineProduct.weight || fineProductCalc),
+    undissolved: !!(data.undissolved.weight || data.undissolved.xrfPurity),
+    goldInSilver:!!(data.goldInSilver.goldWeight || data.goldInSilver.purity),
+  };
 
   return (
     <>
@@ -1105,7 +1150,7 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
 
           {/* 8 — Silver Mix Weight Calculation */}
           <StageSection openStage={openStage} onToggle={toggle} hasData={hasData} stageKey="silverCalc">
-            {/* Read-only reference rows */}
+            {/* Reference info */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ padding: "10px 12px", background: "var(--panel)", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
@@ -1126,33 +1171,83 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* Single user input */}
-            <FRow label="TARGET PURITY (%)">
-              <input
-                type="number" step="0.01" max="100"
-                value={data.silverCalc.targetPurity}
-                onChange={e => setField("silverCalc.targetPurity", e.target.value)}
-                style={inp}
-                placeholder="0.00"
-              />
-            </FRow>
-
-            {/* Calculated result */}
-            {silverMixCalc !== null ? (
-              <div style={{ padding: "12px 14px", background: "var(--gold-dim)", border: "1px solid var(--gold-line)", borderRadius: 9, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-soft)", letterSpacing: "0.06em", marginBottom: 2 }}>SILVER MIX WEIGHT</div>
-                  <div style={{ fontSize: 10, color: "var(--muted)" }}>
-                    ({effectiveFineWeight.toFixed(3)} × {data.fireAssay.purity}/100) − ({effectiveFineWeight.toFixed(3)} × {data.silverCalc.targetPurity}/100)
-                  </div>
-                </div>
-                <span style={{ fontWeight: 800, fontSize: 20, color: "var(--gold)" }}>{silverMixCalc} <span style={{ fontSize: 13, fontWeight: 600 }}>gm</span></span>
-              </div>
-            ) : (data.silverCalc.targetPurity && (!data.fine.fineWeight || !data.fireAssay.purity)) ? (
+            {(!data.fine.fineWeight || !data.fireAssay.purity) && (
               <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", fontSize: 12, color: "#f87171" }}>
                 {!data.fine.fineWeight ? "Enter Fine Weight in Fine Analysis stage first." : "Enter Fire Assay Purity in stage 7 first."}
               </div>
-            ) : null}
+            )}
+
+            {/* Per-batch inputs */}
+            {data.silverCalc.batches.map((b, i) => {
+              const silverAmt = silverBatchCalcs[i];
+              const batchWeightNum = parseFloat(b.weight) || 0;
+              return (
+                <div key={b.label} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10, background: "var(--panel-2)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "var(--gold-soft)", letterSpacing: "0.05em" }}>BATCH {b.label}</div>
+                  <Grid2>
+                    <FRow label="WEIGHT (gm)">
+                      <input
+                        type="number" step="0.001"
+                        value={b.weight}
+                        onChange={e => setSilverBatch(i, "weight", e.target.value)}
+                        style={inp}
+                        placeholder="0.000"
+                      />
+                    </FRow>
+                    <FRow label="TARGET PURITY (%)">
+                      <input
+                        type="number" step="0.01" max="100"
+                        value={b.targetPurity}
+                        onChange={e => setSilverBatch(i, "targetPurity", e.target.value)}
+                        style={inp}
+                        placeholder="0.00"
+                      />
+                    </FRow>
+                  </Grid2>
+                  {silverAmt !== null && (
+                    <div style={{ padding: "9px 13px", background: "var(--gold-dim)", border: "1px solid var(--gold-line)", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        Silver Mix — Batch {b.label}<br />
+                        <span style={{ fontSize: 10 }}>{batchWeightNum.toFixed(3)} × ({data.fireAssay.purity} − {b.targetPurity}) / 100</span>
+                      </div>
+                      <span style={{ fontWeight: 800, fontSize: 18, color: "var(--gold)" }}>
+                        {silverAmt.toFixed(3)} <span style={{ fontSize: 12, fontWeight: 600 }}>gm</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Add / Remove batch */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={addSilverBatch} style={{ flex: 1, height: 34, borderRadius: 8, background: "var(--panel-2)", border: "1px solid var(--gold-line)", color: "var(--gold-soft)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                + Add Batch
+              </button>
+              {data.silverCalc.batches.length > 1 && (
+                <button onClick={removeSilverBatch} style={{ height: 34, padding: "0 14px", borderRadius: 8, background: "var(--panel-2)", border: "1px solid rgba(248,113,113,0.4)", color: "#f87171", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  − Remove
+                </button>
+              )}
+            </div>
+
+            {/* Total silver mix summary */}
+            {silverMixTotal > 0 && (
+              <div style={{ padding: "12px 14px", background: "var(--gold-dim)", border: "1px solid var(--gold-line)", borderRadius: 9, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-soft)", letterSpacing: "0.06em", marginBottom: 3 }}>TOTAL SILVER MIX</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                    Batch total: {silverBatchWeightTotal.toFixed(3)} / {effectiveFineWeight.toFixed(3)} gm
+                    {silverBatchWeightTotal > effectiveFineWeight + 0.001 && (
+                      <span style={{ color: "#f87171", marginLeft: 6 }}>⚠ Exceeds fine weight</span>
+                    )}
+                  </div>
+                </div>
+                <span style={{ fontWeight: 800, fontSize: 20, color: "var(--gold)" }}>
+                  {silverMixTotal.toFixed(3)} <span style={{ fontSize: 13, fontWeight: 600 }}>gm</span>
+                </span>
+              </div>
+            )}
           </StageSection>
 
           {/* 9 — Fine Product */}
@@ -1181,7 +1276,7 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: processingLoss > 0 ? "#f87171" : "#34d399" }}>
                     PROCESSING {processingLoss > 0 ? "LOSS" : "GAIN"}
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Fine Product − (Fine Received + Fine Gold in Silver + Fine Gold in Undissolved)</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Fine Product − Fine Product Out − Dip Sample − Undissolved − Gold in Silver</div>
                 </div>
                 <span style={{ fontWeight: 800, fontSize: 18, color: processingLoss > 0 ? "#f87171" : "#34d399" }}>
                   {processingLoss > 0 ? "−" : "+"}{Math.abs(processingLoss).toFixed(3)} <span style={{ fontSize: 12, fontWeight: 600 }}>gm</span>
@@ -1208,10 +1303,18 @@ function ProcessDrawer({ lot, onClose, onUpdate }) {
               <FRow label="GOLD IN SILVER WEIGHT (gm)">
                 <input type="number" step="0.001" value={data.goldInSilver.goldWeight} onChange={e => setField("goldInSilver.goldWeight", e.target.value)} style={inp} placeholder="0.000" />
               </FRow>
-              <FRow label="FINE GOLD IN SILVER (gm)">
-                <input type="number" step="0.001" value={data.goldInSilver.fineGold} onChange={e => setField("goldInSilver.fineGold", e.target.value)} style={inp} placeholder="0.000" />
+              <FRow label="GOLD IN SILVER PURITY (%)">
+                <input type="number" step="0.001" max="100" value={data.goldInSilver.purity} onChange={e => setField("goldInSilver.purity", e.target.value)} style={inp} placeholder="0.000" />
               </FRow>
             </Grid2>
+            {data.goldInSilver.goldWeight && data.goldInSilver.purity && (
+              <div style={{ padding: "8px 12px", background: "var(--panel)", borderRadius: 8, fontSize: 12, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
+                <span>Fine Gold in Silver</span>
+                <span style={{ fontWeight: 700, color: "var(--gold-soft)" }}>
+                  {((parseFloat(data.goldInSilver.goldWeight) || 0) * (parseFloat(data.goldInSilver.purity) || 0) / 100).toFixed(3)} gm
+                </span>
+              </div>
+            )}
           </StageSection>
 
           {/* Mark complete */}

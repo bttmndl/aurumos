@@ -700,7 +700,7 @@ export default function Consumables() {
             <button
               onClick={searchOpen ? undefined : openSearch}
               style={{
-                width: 38, height: 38, flexShrink: 0, border: "none", cursor: "pointer",
+                width: 38, height: 38, flexShrink: 0, cursor: "pointer",
                 background: searchOpen ? "transparent" : "var(--panel)",
                 border: searchOpen ? "none" : "1px solid var(--line)",
                 borderRadius: searchOpen ? 0 : 10,
